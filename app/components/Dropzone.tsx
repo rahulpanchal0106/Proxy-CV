@@ -52,9 +52,10 @@ export default function Dropzone() {
     useLocalAI();
 
   // Load the model into VRAM via the Leader tab when switched to Local AI
+  // Swap this in your Dropzone.tsx
   useEffect(() => {
     if (!useCloudAI && !isReady) {
-      // Swapped to Qwen 2.5 - significantly better at strict JSON parsing
+      // Back to the lightweight 1.5B model
       loadModel("Qwen2.5-1.5B-Instruct-q4f16_1-MLC");
     }
   }, [useCloudAI, isReady, loadModel]);
@@ -115,24 +116,72 @@ export default function Dropzone() {
         setStatusMsg("");
       } else {
         setStatusMsg("Local Engine: Queuing job to Swarm...");
-        const prompt = `
-          You are an elite HR data extraction AI. 
-          Parse this text and return ONLY a structured JSON object. DO NOT include markdown formatting.
-          
-          Expected JSON Structure:
-          {
-            "fullName": "Name or empty", "candidateId": "Random 6-char ID",
-            "contactInfo": { "email": "Email", "phone": "Phone", "location": "Location" },
-            "professionalSummary": "Summary", "topSkills": ["skill"],
-            "experience": [{"role": "Role", "company": "Company", "duration": "Duration", "location": "Location", "bulletPoints": ["point"]}],
-            "projects": [{"name": "Name", "role": "Role", "technologies": ["tech"], "duration": "Duration", "bulletPoints": ["point"]}],
-            "education": [{"degree": "Degree", "institution": "School", "year": "Year"}],
-            "certifications": [{"name": "Name", "issuer": "Issuer", "year": "Year"}],
-            "additionalSections": [{"title": "Title", "content": ["point"]}]
-          }
-          Raw Resume Text: ${extractedText}
-        `;
-        chat([{ role: "user", content: prompt }]);
+
+        // 1. Define the schema exactly like your working app, using bracketed instructions
+        const targetSchema = {
+          fullName: "[Candidate Full Name]",
+          candidateId: "[Generate Random 6-Character Alphanumeric ID]",
+          contactInfo: {
+            email: "[Email Address]",
+            phone: "[Phone Number]",
+            location: "[City, State, or Country]",
+          },
+          professionalSummary: "[Brief summary of profile]",
+          topSkills: ["[Skill 1]", "[Skill 2]"],
+          experience: [
+            {
+              role: "[Job Title]",
+              company: "[Company Name]",
+              duration: "[Time Period]",
+              location: "[Location]",
+              bulletPoints: ["[Point 1]", "[Point 2]"],
+            },
+          ],
+          projects: [
+            {
+              name: "[Project Name]",
+              role: "[Project Role]",
+              technologies: ["[Tech 1]", "[Tech 2]"],
+              duration: "[Time Period]",
+              bulletPoints: ["[Point 1]"],
+            },
+          ],
+          education: [
+            {
+              degree: "[Degree Name]",
+              institution: "[School Name]",
+              year: "[Graduation Year]",
+            },
+          ],
+          certifications: [
+            {
+              name: "[Certification Name]",
+              issuer: "[Issuing Organization]",
+              year: "[Year]",
+            },
+          ],
+          additionalSections: [
+            {
+              title: "[Section Title]",
+              content: ["[Point 1]"],
+            },
+          ],
+        };
+
+        // 2. Exact same prompt structure from your working file
+        const systemPrompt = `Extract the resume data into the provided JSON schema. 
+Replace the bracketed instructions (e.g., "[Candidate Full Name]") with the actual data from the resume. 
+If a piece of information is not mentioned in the resume, output an empty string "".
+Output ONLY valid JSON. Do not include markdown formatting.
+
+Schema: 
+${JSON.stringify(targetSchema, null, 2)}`;
+
+        // 3. Push to react-brai
+        chat([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Resume:\n${extractedText}` },
+        ]);
       }
     } catch (err: any) {
       setError(err.message || "Failed to process resume.");
@@ -269,8 +318,7 @@ export default function Dropzone() {
                 )}
                 {!useCloudAI && !isReady && (
                   <p className="mt-2 text-sm text-amber-600 font-medium">
-                    Loading Swarm Engine:{" "}
-                    {Math.round(Number(progress?.text) * 100)}%
+                    Loading Swarm Engine: {progress?.text}
                   </p>
                 )}
               </motion.div>
