@@ -48,7 +48,8 @@ export default function Dropzone() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  const { loadModel, chat, isReady, isLoading, response } = useLocalAI();
+  const { loadModel, chat, isReady, isLoading, response, progress } =
+    useLocalAI();
 
   // Load the model into VRAM via the Leader tab when switched to Local AI
   useEffect(() => {
@@ -268,7 +269,8 @@ export default function Dropzone() {
                 )}
                 {!useCloudAI && !isReady && (
                   <p className="mt-2 text-sm text-amber-600 font-medium">
-                    Loading Swarm Engine: {Math.round(progress * 100)}%
+                    Loading Swarm Engine:{" "}
+                    {Math.round(Number(progress?.text) * 100)}%
                   </p>
                 )}
               </motion.div>
