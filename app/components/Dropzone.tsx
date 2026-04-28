@@ -28,13 +28,13 @@ import {
 
 // --- FREELY AVAILABLE CLOUD MODELS (As of April 2026) ---
 const CLOUD_MODELS = [
-  { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (Next-Gen/Free)" },
-  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Fastest/Stable)" },
-  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Highest Accuracy/Free)" },
   {
     id: "gemini-3.1-flash-lite-preview",
     name: "Gemini 3.1 Flash-Lite (Experimental)",
   },
+  { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (Next-Gen/Free)" },
+  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Fastest/Stable)" },
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Highest Accuracy/Free)" },
   { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite (Lightweight)" },
 ];
 
