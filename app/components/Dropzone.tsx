@@ -16,6 +16,11 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  HardDriveDownload,
+  Database,
+  Info,
+  Key,
+  ChevronDown,
 } from "lucide-react";
 
 export default function Dropzone() {
@@ -30,7 +35,14 @@ export default function Dropzone() {
   const [showOriginalName, setShowOriginalName] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Engine States
   const [useCloudAI, setUseCloudAI] = useState(true);
+  const [localConsentGiven, setLocalConsentGiven] = useState(false);
+
+  // NEW: Fallback Configuration States
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [cloudModel, setCloudModel] = useState("gemini-1.5-flash");
 
   const [sections, setSections] = useState({
     name: true,
@@ -51,14 +63,11 @@ export default function Dropzone() {
   const { loadModel, chat, isReady, isLoading, response, progress } =
     useLocalAI();
 
-  // Load the model into VRAM via the Leader tab when switched to Local AI
-  // Swap this in your Dropzone.tsx
   useEffect(() => {
-    if (!useCloudAI && !isReady) {
-      // Back to the lightweight 1.5B model
+    if (!useCloudAI && !isReady && localConsentGiven) {
       loadModel("Qwen2.5-1.5B-Instruct-q4f16_1-MLC");
     }
-  }, [useCloudAI, isReady, loadModel]);
+  }, [useCloudAI, isReady, localConsentGiven, loadModel]);
 
   useEffect(() => {
     if (isProcessing && !useCloudAI && !isLoading && response) {
@@ -99,11 +108,18 @@ export default function Dropzone() {
 
       if (useCloudAI) {
         setStatusMsg("Cloud Engine: Analyzing profile...");
+
+        // NEW: Pass the optional overrides to the backend
         const parseRes = await fetch("/api/parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: extractedText }),
+          body: JSON.stringify({
+            text: extractedText,
+            apiKey: customApiKey || undefined,
+            modelName: cloudModel || undefined,
+          }),
         });
+
         const parseResult = await parseRes.json();
         if (!parseRes.ok)
           throw new Error(
@@ -117,10 +133,10 @@ export default function Dropzone() {
       } else {
         setStatusMsg("Local Engine: Queuing job to Swarm...");
 
-        // 1. Define the schema exactly like your working app, using bracketed instructions
+        // The bracketed schema that guarantees 1.5B accuracy
         const targetSchema = {
           fullName: "[Candidate Full Name]",
-          candidateId: "[Generate Random 6-Character Alphanumeric ID]",
+          candidateId: "[Generate Random 6-Character ID]",
           contactInfo: {
             email: "[Email Address]",
             phone: "[Phone Number]",
@@ -134,7 +150,7 @@ export default function Dropzone() {
               company: "[Company Name]",
               duration: "[Time Period]",
               location: "[Location]",
-              bulletPoints: ["[Point 1]", "[Point 2]"],
+              bulletPoints: ["[Point 1]"],
             },
           ],
           projects: [
@@ -161,23 +177,12 @@ export default function Dropzone() {
             },
           ],
           additionalSections: [
-            {
-              title: "[Section Title]",
-              content: ["[Point 1]"],
-            },
+            { title: "[Section Title]", content: ["[Point 1]"] },
           ],
         };
 
-        // 2. Exact same prompt structure from your working file
-        const systemPrompt = `Extract the resume data into the provided JSON schema. 
-Replace the bracketed instructions (e.g., "[Candidate Full Name]") with the actual data from the resume. 
-If a piece of information is not mentioned in the resume, output an empty string "".
-Output ONLY valid JSON. Do not include markdown formatting.
+        const systemPrompt = `Extract the resume data into the provided JSON schema. Replace the bracketed instructions with the actual data from the resume. If a piece of information is not mentioned in the resume, output an empty string "". Output ONLY valid JSON.\n\nSchema:\n${JSON.stringify(targetSchema, null, 2)}`;
 
-Schema: 
-${JSON.stringify(targetSchema, null, 2)}`;
-
-        // 3. Push to react-brai
         chat([
           { role: "system", content: systemPrompt },
           { role: "user", content: `Resume:\n${extractedText}` },
@@ -199,6 +204,8 @@ ${JSON.stringify(targetSchema, null, 2)}`;
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
+    if (!useCloudAI && !isReady) return;
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       if (e.dataTransfer.files[0].type === "application/pdf") {
         processResumePipeline(e.dataTransfer.files[0]);
@@ -211,7 +218,6 @@ ${JSON.stringify(targetSchema, null, 2)}`;
   const handleToggle = (key: keyof typeof sections) =>
     setSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Custom UI Toggle Component
   const CustomToggle = ({
     checked,
     onChange,
@@ -240,9 +246,9 @@ ${JSON.stringify(targetSchema, null, 2)}`;
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 relative font-sans">
-      {/* Engine Segmented Control */}
-      <div className="flex justify-center mb-8">
-        <div className="bg-gray-100/80 backdrop-blur-md p-1.5 rounded-2xl inline-flex shadow-sm border border-gray-200/50 relative">
+      {/* Engine Segmented Control & Dynamic Warnings */}
+      <div className="flex flex-col items-center mb-8">
+        <div className="bg-gray-100/80 backdrop-blur-md p-1.5 rounded-2xl inline-flex shadow-sm border border-gray-200/50 relative mb-4">
           <button
             onClick={() => !isProcessing && setUseCloudAI(true)}
             className={`relative flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 z-10 ${useCloudAI ? "text-indigo-700" : "text-gray-500 hover:text-gray-700"}`}
@@ -255,33 +261,144 @@ ${JSON.stringify(targetSchema, null, 2)}`;
           >
             <ShieldCheck size={16} /> Local Private
           </button>
-
-          {/* Animated Background Pill */}
           <motion.div
             className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] rounded-xl bg-white shadow-sm border border-gray-200 z-0 ${useCloudAI ? "left-1.5" : "right-1.5"}`}
             layout
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
           />
         </div>
+
+        {/* Dynamic Warning Banners */}
+        <AnimatePresence mode="wait">
+          {useCloudAI ? (
+            <motion.div
+              key="cloud-warning"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="flex flex-col w-full max-w-md"
+            >
+              <div className="flex items-start gap-2 text-xs text-indigo-600/80 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 mb-2">
+                <Info size={16} className="shrink-0 mt-0.5" />
+                <p>
+                  <strong>Cloud Processing:</strong> Fastest extraction.
+                  PII-stripped data is securely transmitted to Google Gemini
+                  servers via API.
+                </p>
+              </div>
+
+              {/* Expandable BYOK Settings */}
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                <button
+                  onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Settings size={14} /> Advanced API Configuration (Optional)
+                  </div>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-300 ${showAdvancedSettings ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                <AnimatePresence>
+                  {showAdvancedSettings && (
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: "auto" }}
+                      exit={{ height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-4 pt-0 border-t border-gray-100 flex flex-col gap-4 mt-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-gray-500">
+                            Custom Gemini API Key
+                          </label>
+                          <div className="relative">
+                            <Key
+                              size={14}
+                              className="absolute left-3 top-2.5 text-gray-400"
+                            />
+                            <input
+                              type="password"
+                              placeholder="Leave blank to use default server key"
+                              value={customApiKey}
+                              onChange={(e) => setCustomApiKey(e.target.value)}
+                              className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 pl-9 pr-3 text-xs text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-gray-500">
+                            Cloud Model String
+                          </label>
+                          <select
+                            value={cloudModel}
+                            onChange={(e) => setCloudModel(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 px-3 text-xs text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none"
+                          >
+                            <option value="gemini-1.5-flash">
+                              Gemini 1.5 Flash (Fastest)
+                            </option>
+                            <option value="gemini-1.5-pro">
+                              Gemini 1.5 Pro (Highest Accuracy)
+                            </option>
+                            <option value="gemini-2.0-flash">
+                              Gemini 2.0 Flash (Experimental)
+                            </option>
+                          </select>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="local-warning"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="flex items-start gap-2 text-xs text-amber-700/80 bg-amber-50 p-3 rounded-xl border border-amber-200 max-w-md"
+            >
+              <ShieldCheck size={16} className="shrink-0 mt-0.5" />
+              <p>
+                <strong>100% Offline:</strong> Zero data leaves this device.
+                Requires downloading a ~1.6GB AI model to browser cache. Best
+                for ultra-sensitive data. Requires 4GB+ VRAM.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Main Dropzone */}
+      {/* Main Dropzone / Engine UI */}
       <motion.div
         layout
         className={`relative overflow-hidden rounded-3xl border-2 transition-all duration-300 ${
-          isDragging
-            ? "border-indigo-500 bg-indigo-50/50 scale-[1.02]"
-            : isProcessing
-              ? "border-indigo-300 bg-white shadow-lg"
-              : "border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-50 hover:border-indigo-400"
+          !useCloudAI && !isReady
+            ? "border-gray-200 bg-white shadow-sm"
+            : isDragging
+              ? "border-indigo-500 bg-indigo-50/50 scale-[1.02]"
+              : isProcessing
+                ? "border-indigo-300 bg-white shadow-lg"
+                : "border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-50 hover:border-indigo-400 cursor-pointer"
         }`}
         onDragOver={(e) => {
           e.preventDefault();
-          setIsDragging(true);
+          if (useCloudAI || isReady) setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
-        onDrop={isProcessing ? undefined : handleDrop}
-        onClick={() => !isProcessing && fileInputRef.current?.click()}
+        onDrop={
+          isProcessing || (!useCloudAI && !isReady) ? undefined : handleDrop
+        }
+        onClick={() =>
+          !isProcessing &&
+          (useCloudAI || isReady) &&
+          fileInputRef.current?.click()
+        }
       >
         <input
           type="file"
@@ -289,40 +406,104 @@ ${JSON.stringify(targetSchema, null, 2)}`;
           className="hidden"
           ref={fileInputRef}
           onChange={handleFileChange}
-          disabled={isProcessing}
+          disabled={isProcessing || (!useCloudAI && !isReady)}
         />
 
-        <div className="p-16 flex flex-col items-center justify-center min-h-[300px] cursor-pointer">
+        <div className="p-10 sm:p-16 flex flex-col items-center justify-center min-h-[340px]">
           <AnimatePresence mode="wait">
-            {isProcessing ? (
+            {/* STATE 1: Local AI Needs Consent */}
+            {!useCloudAI && !isReady && !localConsentGiven && (
+              <motion.div
+                key="consent"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex flex-col items-center text-center max-w-md cursor-default"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-green-50 p-4 rounded-full mb-4 border border-green-100">
+                  <Database className="w-10 h-10 text-green-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Enable Private Local Engine
+                </h3>
+                <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                  To process resumes entirely offline without sending data to
+                  the cloud, Proxy CV needs to download a secure AI model
+                  directly into your browser's cache.
+                </p>
+                <button
+                  onClick={() => setLocalConsentGiven(true)}
+                  className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-green-700 shadow-md transition-all"
+                >
+                  <HardDriveDownload size={18} /> Download Secure Engine (1.6GB)
+                </button>
+              </motion.div>
+            )}
+
+            {/* STATE 2: Local AI Downloading */}
+            {!useCloudAI && !isReady && localConsentGiven && (
+              <motion.div
+                key="downloading"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center w-full max-w-md cursor-default"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Loader2 className="w-10 h-10 text-green-500 animate-spin mb-4" />
+                <h3 className="text-lg font-bold text-gray-900 mb-1">
+                  Caching AI Engine...
+                </h3>
+                <p className="text-sm text-gray-500 font-mono text-center mb-6 h-10">
+                  {progress?.text || "Connecting to Swarm network..."}
+                </p>
+                <div className="w-full bg-gray-100 rounded-full h-3 mb-2 overflow-hidden border border-gray-200">
+                  <motion.div
+                    className="bg-green-500 h-3 rounded-full"
+                    initial={{ width: "0%" }}
+                    animate={{ width: `${(progress?.progress || 0) * 100}%` }}
+                    transition={{ ease: "linear", duration: 0.2 }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 font-semibold">
+                  {Math.round((progress?.progress || 0) * 100)}% Complete
+                </p>
+              </motion.div>
+            )}
+
+            {/* STATE 3: Processing File */}
+            {isProcessing && (useCloudAI || isReady) && (
               <motion.div
                 key="processing"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex flex-col items-center"
+                className="flex flex-col items-center cursor-wait"
+                onClick={(e) => e.stopPropagation()}
               >
                 <div className="relative">
-                  <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-75"></div>
+                  <div
+                    className={`absolute inset-0 rounded-full animate-ping opacity-75 ${useCloudAI ? "bg-indigo-100" : "bg-green-100"}`}
+                  ></div>
                   <div className="relative bg-white p-4 rounded-full shadow-md">
-                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                    <Loader2
+                      className={`w-8 h-8 animate-spin ${useCloudAI ? "text-indigo-600" : "text-green-600"}`}
+                    />
                   </div>
                 </div>
-                <h3 className="mt-6 text-xl font-bold text-gray-800 tracking-tight">
+                <h3 className="mt-6 text-xl font-bold text-gray-800 tracking-tight text-center max-w-sm">
                   {statusMsg}
                 </h3>
                 {!useCloudAI && isLoading && (
-                  <p className="mt-2 text-sm text-indigo-500 animate-pulse">
+                  <p className="mt-2 text-sm text-green-600 font-medium animate-pulse">
                     WebGPU worker streaming tokens...
                   </p>
                 )}
-                {!useCloudAI && !isReady && (
-                  <p className="mt-2 text-sm text-amber-600 font-medium">
-                    Loading Swarm Engine: {progress?.text}
-                  </p>
-                )}
               </motion.div>
-            ) : (
+            )}
+
+            {/* STATE 4: Ready to Drop (Idle) */}
+            {!isProcessing && (useCloudAI || isReady) && (
               <motion.div
                 key="idle"
                 initial={{ opacity: 0, y: 10 }}
@@ -330,15 +511,22 @@ ${JSON.stringify(targetSchema, null, 2)}`;
                 className="flex flex-col items-center"
               >
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                  <UploadCloud className="w-10 h-10 text-indigo-500" />
+                  <UploadCloud
+                    className={`w-10 h-10 ${useCloudAI ? "text-indigo-500" : "text-green-500"}`}
+                  />
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 mb-2">
                   Drop Candidate Resume Here
                 </h3>
                 <p className="text-sm text-gray-500 text-center max-w-sm">
-                  Upload a PDF. We'll automatically strip contact details and
-                  generate a pristine, client-ready format.
+                  Upload a PDF. Proxy CV will automatically strip contact
+                  details and generate a secure, client-ready format.
                 </p>
+                {!useCloudAI && (
+                  <p className="mt-4 text-xs font-bold text-green-600 px-3 py-1 bg-green-50 rounded-full">
+                    Secure Offline Engine Active
+                  </p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -369,7 +557,7 @@ ${JSON.stringify(targetSchema, null, 2)}`;
         >
           <button
             onClick={() => setShowPreview(true)}
-            className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3.5 rounded-full font-semibold hover:bg-gray-800 shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-300"
+            className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3.5 rounded-full font-semibold hover:bg-gray-800 shadow-xl hover:-translate-y-0.5 transition-all"
           >
             <Settings size={18} /> Open PDF Editor
           </button>
@@ -392,7 +580,6 @@ ${JSON.stringify(targetSchema, null, 2)}`;
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className="bg-white rounded-[2rem] w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-white/20"
             >
-              {/* Modal Header */}
               <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white/50 backdrop-blur-xl z-10">
                 <div className="flex items-center gap-3">
                   <div className="bg-indigo-100 p-2 rounded-xl">
@@ -441,12 +628,8 @@ ${JSON.stringify(targetSchema, null, 2)}`;
                   </button>
                 </div>
               </div>
-
-              {/* Layout Editor */}
               <div className="flex flex-1 overflow-hidden bg-gray-50/50">
-                {/* Left Sidebar */}
                 <div className="w-72 bg-white border-r border-gray-100 p-6 overflow-y-auto hide-scrollbar">
-                  {/* Identity Reveal Panel */}
                   <div className="mb-8 p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200/60 shadow-sm">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-bold text-gray-900 flex items-center gap-2">
@@ -454,7 +637,7 @@ ${JSON.stringify(targetSchema, null, 2)}`;
                           <Eye size={16} className="text-green-600" />
                         ) : (
                           <EyeOff size={16} className="text-gray-400" />
-                        )}
+                        )}{" "}
                         Reveal Identity
                       </h3>
                       <div
@@ -471,12 +654,10 @@ ${JSON.stringify(targetSchema, null, 2)}`;
                       instead of their ID.
                     </p>
                   </div>
-
                   <h3 className="font-bold text-gray-900 mb-4 text-sm tracking-wide flex items-center gap-2">
                     <Settings size={16} className="text-gray-400" /> Document
                     Sections
                   </h3>
-
                   <div className="space-y-1 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
                     {Object.keys(sections).map((key) => (
                       <CustomToggle
@@ -490,8 +671,6 @@ ${JSON.stringify(targetSchema, null, 2)}`;
                     ))}
                   </div>
                 </div>
-
-                {/* PDF Viewer Area */}
                 <div className="flex-1 bg-gray-200/50 p-6">
                   <div className="w-full h-full rounded-2xl overflow-hidden shadow-xl border border-gray-200/60 bg-white">
                     <PDFViewer

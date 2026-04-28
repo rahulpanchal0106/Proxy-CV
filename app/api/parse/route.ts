@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
 export async function POST(req: NextRequest) {
   try {
-    const { text } = await req.json();
+    // Extract the new optional overrides from the frontend payload
+    const { text, apiKey, modelName } = await req.json();
 
     if (!text) {
       return NextResponse.json({ error: 'No text provided for parsing.' }, { status: 400 });
     }
 
+    // 1. Use the provided API Key, OR fallback to the server's ENV file
+    const activeKey = apiKey || process.env.GEMINI_API_KEY;
+    if (!activeKey) {
+       return NextResponse.json({ error: 'No API key configured.' }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(activeKey);
+
+    // 2. Use the provided Model, OR fallback to 1.5-flash
+    const activeModel = modelName || 'gemini-1.5-flash';
+
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-3-flash-preview', // Or gemini-3-flash-preview depending on your SDK
+      model: activeModel, 
       generationConfig: {
         responseMimeType: "application/json",
       }
@@ -40,44 +50,11 @@ export async function POST(req: NextRequest) {
         },
         "professionalSummary": "A brief summary of their profile. Leave empty if none exists.",
         "topSkills": ["skill1", "skill2", "skill3"],
-        "experience": [
-          {
-            "role": "Job Title",
-            "company": "Company Name. Leave empty if none.",
-            "duration": "Time period",
-            "location": "Location if mentioned",
-            "bulletPoints": ["point 1", "point 2"]
-          }
-        ],
-        "projects": [
-          {
-            "name": "Project Name",
-            "role": "Role in the project (e.g., Lead Developer, Creator)",
-            "technologies": ["tech1", "tech2"],
-            "duration": "Time period if mentioned",
-            "bulletPoints": ["point 1", "point 2"]
-          }
-        ],
-        "education": [
-          {
-            "degree": "Degree Name",
-            "institution": "School Name",
-            "year": "Graduation Year or Duration"
-          }
-        ],
-        "certifications": [
-          {
-            "name": "Certification Name",
-            "issuer": "Issuing Organization",
-            "year": "Year obtained"
-          }
-        ],
-        "additionalSections": [
-          {
-            "title": "Name of the section",
-            "content": ["Bullet point or item 1", "Bullet point or item 2"]
-          }
-        ]
+        "experience": [{"role": "Job Title", "company": "Company Name", "duration": "Time period", "location": "Location", "bulletPoints": ["point 1"]}],
+        "projects": [{"name": "Project Name", "role": "Role", "technologies": ["tech1"], "duration": "Time period", "bulletPoints": ["point 1"]}],
+        "education": [{"degree": "Degree", "institution": "School", "year": "Year"}],
+        "certifications": [{"name": "Certification Name", "issuer": "Issuer", "year": "Year"}],
+        "additionalSections": [{"title": "Name of the section", "content": ["Bullet point"]}]
       }
 
       Raw Resume Text to Parse:
