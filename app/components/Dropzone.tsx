@@ -24,10 +24,9 @@ import {
   Cpu,
   ExternalLink,
   Search,
-  Trash2,
 } from "lucide-react";
 
-// --- FREELY AVAILABLE CLOUD MODELS (As of April 2026) ---
+// --- FREELY AVAILABLE CLOUD MODELS ---
 const CLOUD_MODELS = [
   {
     id: "gemini-3.1-flash-lite-preview",
@@ -110,23 +109,47 @@ export default function Dropzone() {
   });
 
   const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => setIsMounted(true), []);
-
   const { loadModel, chat, isReady, isLoading, response, progress } =
     useLocalAI();
 
-  // Determine active model IDs
+  // --- NEW: LOCAL STORAGE SYNC ---
+  // 1. Load saved settings on mount
+  useEffect(() => {
+    setIsMounted(true);
+    try {
+      const savedKey = localStorage.getItem("proxy_cv_cloud_api_key");
+      const savedModel = localStorage.getItem("proxy_cv_cloud_model");
+      const savedCustomModel = localStorage.getItem(
+        "proxy_cv_custom_cloud_model",
+      );
+
+      if (savedKey) setCustomApiKey(savedKey);
+      if (savedModel) setSelectedCloudModel(savedModel);
+      if (savedCustomModel) setCustomCloudModel(savedCustomModel);
+    } catch (e) {
+      console.error("Failed to load settings from local storage", e);
+    }
+  }, []);
+
+  // 2. Save settings whenever they change
+  useEffect(() => {
+    if (isMounted) {
+      localStorage.setItem("proxy_cv_cloud_api_key", customApiKey);
+      localStorage.setItem("proxy_cv_cloud_model", selectedCloudModel);
+      localStorage.setItem("proxy_cv_custom_cloud_model", customCloudModel);
+    }
+  }, [customApiKey, selectedCloudModel, customCloudModel, isMounted]);
+  // ---------------------------------
+
   const activeCloudModelId = customCloudModel || selectedCloudModel;
   const activeLocalModelId = customLocalModel || selectedLocalModel.id;
 
-  // Handle Local Loading
   useEffect(() => {
     if (!useCloudAI && !isReady && localConsentGiven) {
       loadModel(activeLocalModelId);
     }
   }, [useCloudAI, isReady, localConsentGiven, activeLocalModelId, loadModel]);
 
-  // Handle Local Model Swap
   const handleLocalModelSwap = (modelId: string) => {
     const selected =
       LOCAL_MODELS.find((m) => m.id === modelId) || LOCAL_MODELS[0];
@@ -138,34 +161,6 @@ export default function Dropzone() {
     }
   };
 
-  // --- NEW: Clear Browser Cache Logic ---
-  const handleClearCache = async () => {
-    const confirmWipe = window.confirm(
-      "Are you sure you want to delete all downloaded AI models from your browser?\n\nThis will free up several gigabytes of storage, but you will need to re-download the models to use Local AI again.",
-    );
-
-    if (!confirmWipe) return;
-
-    if ("caches" in window) {
-      try {
-        const cacheKeys = await caches.keys();
-        // WebLLM uses specific cache names, but deleting all ensures a clean slate
-        await Promise.all(cacheKeys.map((key) => caches.delete(key)));
-
-        // Reload to drop the WebGPU context from VRAM
-        window.location.reload();
-      } catch (err) {
-        console.error("Failed to clear cache:", err);
-        alert(
-          "Could not automatically clear cache. You may need to clear your browser data manually.",
-        );
-      }
-    } else {
-      alert("Your browser does not support the Cache API.");
-    }
-  };
-
-  // Handle Local Response Parsing
   useEffect(() => {
     if (isProcessing && !useCloudAI && !isLoading && response) {
       try {
@@ -341,7 +336,6 @@ export default function Dropzone() {
 
   return (
     <div className="w-full max-w-4xl mx-auto p-6 relative font-sans">
-      {/* Switcher & Config */}
       <div className="flex flex-col items-center mb-8">
         <div className="bg-gray-100/80 backdrop-blur-md p-1.5 rounded-2xl inline-flex shadow-sm border border-gray-200/50 relative mb-4">
           <button
@@ -363,7 +357,6 @@ export default function Dropzone() {
           />
         </div>
 
-        {/* Configuration Banners */}
         <AnimatePresence mode="wait">
           {useCloudAI ? (
             <motion.div
@@ -569,6 +562,10 @@ export default function Dropzone() {
                             />
                           </div>
                         </div>
+                        <div className="bg-white/50 border border-gray-100 p-2 rounded text-[10px] text-gray-500 italic">
+                          Model weights are cached locally. Changing models
+                          while initialized will trigger a new download cycle.
+                        </div>
                         <div className="bg-gray-50/50 border border-gray-100 p-3 rounded-lg text-[10px] text-gray-500 leading-relaxed mt-2 flex items-start gap-2">
                           <Search
                             size={14}
@@ -590,20 +587,6 @@ export default function Dropzone() {
                             </code>
                             .
                           </p>
-                        </div>
-
-                        {/* --- CLEAR CACHE BUTTON --- */}
-                        <div className="mt-2 pt-3 border-t border-gray-200 flex items-center justify-between">
-                          <span className="text-[10px] text-gray-500 italic">
-                            Free up disk space by wiping downloaded models.
-                          </span>
-                          <button
-                            onClick={handleClearCache}
-                            disabled={isProcessing}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 rounded-md text-[10px] font-bold transition-colors disabled:opacity-50"
-                          >
-                            <Trash2 size={12} /> Clear Cache
-                          </button>
                         </div>
                       </div>
                     </motion.div>
