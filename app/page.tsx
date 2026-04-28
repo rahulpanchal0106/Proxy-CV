@@ -6,7 +6,7 @@ export default function Home() {
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl mb-4">
-            Red-Actor
+            Proxy CV
           </h1>
           <p className="text-lg text-gray-600">
             Securely strip Personally Identifiable Information (PII) from

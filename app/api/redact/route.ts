@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     // Wrap the event-based pdf2json in a clean Promise
     const extractedText = await new Promise<string>((resolve, reject) => {
       // The '1' tells it to parse raw text only (much faster, skips UI rendering)
-      const pdfParser = new PDFParser(null, 1); 
+      const pdfParser = new PDFParser(null, true); 
 
       pdfParser.on("pdfParser_dataError", (errData: any) => reject(errData.parserError));
       pdfParser.on("pdfParser_dataReady", () => {
