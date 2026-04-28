@@ -4,6 +4,19 @@ import React, { useState, useRef, useEffect } from "react";
 import { PDFDownloadLink, PDFViewer } from "@react-pdf/renderer";
 import RedactedResumePDF from "./redactedResumePDF";
 import { useLocalAI } from "react-brai";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  UploadCloud,
+  FileText,
+  Settings,
+  ShieldCheck,
+  Zap,
+  X,
+  Download,
+  Eye,
+  EyeOff,
+  Loader2,
+} from "lucide-react";
 
 export default function Dropzone() {
   const [file, setFile] = useState<File | null>(null);
@@ -15,6 +28,7 @@ export default function Dropzone() {
   const [parsedData, setParsedData] = useState<any | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showOriginalName, setShowOriginalName] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [useCloudAI, setUseCloudAI] = useState(true);
 
@@ -34,28 +48,23 @@ export default function Dropzone() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  // --- INITIALIZE REACT-BRAI ---
   const { loadModel, chat, isReady, isLoading, response } = useLocalAI();
 
   // Load the model into VRAM via the Leader tab when switched to Local AI
   useEffect(() => {
     if (!useCloudAI && !isReady) {
-      loadModel("Llama-3.2-1B-Instruct-q4f16_1-MLC"); // Or your preferred model
+      // Swapped to Qwen 2.5 - significantly better at strict JSON parsing
+      loadModel("Qwen2.5-1.5B-Instruct-q4f16_1-MLC");
     }
   }, [useCloudAI, isReady, loadModel]);
 
-  // --- REACT-BRAI EVENT LISTENER ---
-  // Listen for the local WebGPU worker to finish streaming the response
   useEffect(() => {
-    // If we are actively processing a local job, and the engine just finished loading...
     if (isProcessing && !useCloudAI && !isLoading && response) {
       try {
         const cleanJsonString = response.replace(/```json\n?|```/g, "").trim();
-        const localParsedData = JSON.parse(cleanJsonString);
-        setParsedData(localParsedData);
+        setParsedData(JSON.parse(cleanJsonString));
         setShowPreview(true);
-      } catch (err: any) {
-        console.error("react-brai parsing error:", err);
+      } catch (err) {
         setError("Local AI failed to format JSON. Try again.");
       } finally {
         setIsProcessing(false);
@@ -87,7 +96,6 @@ export default function Dropzone() {
       const extractedText = redactResult.data.redactedText;
 
       if (useCloudAI) {
-        // --- CLOUD INFERENCE ---
         setStatusMsg("Cloud Engine: Analyzing profile...");
         const parseRes = await fetch("/api/parse", {
           method: "POST",
@@ -105,9 +113,7 @@ export default function Dropzone() {
         setIsProcessing(false);
         setStatusMsg("");
       } else {
-        // --- LOCAL INFERENCE (react-brai) ---
         setStatusMsg("Local Engine: Queuing job to Swarm...");
-
         const prompt = `
           You are an elite HR data extraction AI. 
           Parse this text and return ONLY a structured JSON object. DO NOT include markdown formatting.
@@ -125,9 +131,6 @@ export default function Dropzone() {
           }
           Raw Resume Text: ${extractedText}
         `;
-
-        // Push the job to the Swarm queue.
-        // We do NOT set isProcessing(false) here. The useEffect above handles completion.
         chat([{ role: "user", content: prompt }]);
       }
     } catch (err: any) {
@@ -145,6 +148,7 @@ export default function Dropzone() {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       if (e.dataTransfer.files[0].type === "application/pdf") {
         processResumePipeline(e.dataTransfer.files[0]);
@@ -154,49 +158,79 @@ export default function Dropzone() {
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) =>
-    e.preventDefault();
   const handleToggle = (key: keyof typeof sections) =>
     setSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  // Custom UI Toggle Component
+  const CustomToggle = ({
+    checked,
+    onChange,
+    label,
+  }: {
+    checked: boolean;
+    onChange: () => void;
+    label: string;
+  }) => (
+    <div
+      className="flex items-center justify-between py-2 cursor-pointer group"
+      onClick={onChange}
+    >
+      <span className="text-sm font-medium text-gray-700 capitalize group-hover:text-indigo-600 transition-colors">
+        {label === "additional" ? "Other Info" : label}
+      </span>
+      <div
+        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ease-in-out ${checked ? "bg-indigo-600" : "bg-gray-200"}`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-300 ease-in-out ${checked ? "translate-x-4" : "translate-x-1"}`}
+        />
+      </div>
+    </div>
+  );
+
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 relative">
-      {/* --- ENGINE TOGGLE --- */}
+    <div className="w-full max-w-4xl mx-auto p-6 relative font-sans">
+      {/* Engine Segmented Control */}
       <div className="flex justify-center mb-8">
-        <div className="bg-gray-100 p-1 rounded-full inline-flex shadow-inner border border-gray-200">
+        <div className="bg-gray-100/80 backdrop-blur-md p-1.5 rounded-2xl inline-flex shadow-sm border border-gray-200/50 relative">
           <button
             onClick={() => !isProcessing && setUseCloudAI(true)}
-            disabled={isProcessing}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
-              useCloudAI
-                ? "bg-indigo-600 text-white shadow-md"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`relative flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 z-10 ${useCloudAI ? "text-indigo-700" : "text-gray-500 hover:text-gray-700"}`}
           >
-            🌩️ Cloud API (Fast)
+            <Zap size={16} /> Cloud Fast
           </button>
           <button
             onClick={() => !isProcessing && setUseCloudAI(false)}
-            disabled={isProcessing}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
-              !useCloudAI
-                ? "bg-green-600 text-white shadow-md"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`relative flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 z-10 ${!useCloudAI ? "text-green-700" : "text-gray-500 hover:text-gray-700"}`}
           >
-            🔒 Local AI (Private)
+            <ShieldCheck size={16} /> Local Private
           </button>
+
+          {/* Animated Background Pill */}
+          <motion.div
+            className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] rounded-xl bg-white shadow-sm border border-gray-200 z-0 ${useCloudAI ? "left-1.5" : "right-1.5"}`}
+            layout
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          />
         </div>
       </div>
 
-      <div
-        className={`border-2 border-dashed rounded-lg p-12 text-center transition-all duration-300 ${
-          isProcessing
-            ? "border-indigo-400 bg-indigo-50 cursor-wait"
-            : "border-gray-400 hover:bg-gray-50 cursor-pointer"
+      {/* Main Dropzone */}
+      <motion.div
+        layout
+        className={`relative overflow-hidden rounded-3xl border-2 transition-all duration-300 ${
+          isDragging
+            ? "border-indigo-500 bg-indigo-50/50 scale-[1.02]"
+            : isProcessing
+              ? "border-indigo-300 bg-white shadow-lg"
+              : "border-dashed border-gray-300 bg-gray-50/50 hover:bg-gray-50 hover:border-indigo-400"
         }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
         onDrop={isProcessing ? undefined : handleDrop}
-        onDragOver={handleDragOver}
         onClick={() => !isProcessing && fileInputRef.current?.click()}
       >
         <input
@@ -207,164 +241,227 @@ export default function Dropzone() {
           onChange={handleFileChange}
           disabled={isProcessing}
         />
-        <div className="flex flex-col items-center justify-center space-y-4">
-          {isProcessing ? (
-            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-          ) : (
-            <svg
-              className="w-12 h-12 text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-          )}
-          <div>
-            {isProcessing ? (
-              <p className="text-lg font-bold text-indigo-700 animate-pulse">
-                {statusMsg}
-                {/* Show react-brai streaming progress if local and loading */}
-                {!useCloudAI && isLoading && (
-                  <span className="block text-sm text-indigo-500 mt-2 font-normal">
-                    Tokens streaming in WebGPU worker...
-                  </span>
-                )}
-              </p>
-            ) : file ? (
-              <p className="text-lg font-medium text-gray-700">
-                {file.name} processed.
-              </p>
-            ) : (
-              <p className="text-lg font-medium text-gray-600">
-                Drag & drop your resume PDF here
-              </p>
-            )}
 
-            {/* Show react-brai loading status to the user ONLY if they selected Local AI */}
-            {!useCloudAI && !isReady && !isProcessing && (
-              <p className="text-sm text-amber-600 mt-2 font-semibold">
-                Waiting for Swarm Leader to load model into VRAM...
-              </p>
+        <div className="p-16 flex flex-col items-center justify-center min-h-[300px] cursor-pointer">
+          <AnimatePresence mode="wait">
+            {isProcessing ? (
+              <motion.div
+                key="processing"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-75"></div>
+                  <div className="relative bg-white p-4 rounded-full shadow-md">
+                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                  </div>
+                </div>
+                <h3 className="mt-6 text-xl font-bold text-gray-800 tracking-tight">
+                  {statusMsg}
+                </h3>
+                {!useCloudAI && isLoading && (
+                  <p className="mt-2 text-sm text-indigo-500 animate-pulse">
+                    WebGPU worker streaming tokens...
+                  </p>
+                )}
+                {!useCloudAI && !isReady && (
+                  <p className="mt-2 text-sm text-amber-600 font-medium">
+                    Loading Swarm Engine: {Math.round(progress * 100)}%
+                  </p>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="idle"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center"
+              >
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                  <UploadCloud className="w-10 h-10 text-indigo-500" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">
+                  Drop Candidate Resume Here
+                </h3>
+                <p className="text-sm text-gray-500 text-center max-w-sm">
+                  Upload a PDF. We'll automatically strip contact details and
+                  generate a pristine, client-ready format.
+                </p>
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
 
       {error && (
-        <div className="mt-4 p-4 bg-red-100 text-red-700 rounded-md border border-red-200">
-          {error}
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-6 p-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 flex items-start gap-3"
+        >
+          <div className="bg-red-100 p-1 rounded-full">
+            <X size={16} />
+          </div>
+          <div>
+            <p className="font-semibold">Engine Error</p>
+            <p className="text-sm mt-1">{error}</p>
+          </div>
+        </motion.div>
       )}
 
       {parsedData && !isProcessing && (
-        <div className="mt-8 pt-8 border-t flex justify-center">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-8 flex justify-center"
+        >
           <button
             onClick={() => setShowPreview(true)}
-            className="bg-black text-white px-8 py-3 rounded-md font-semibold hover:bg-gray-800 shadow-lg"
+            className="flex items-center gap-2 bg-gray-900 text-white px-8 py-3.5 rounded-full font-semibold hover:bg-gray-800 shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-300"
           >
-            Re-open PDF Editor
+            <Settings size={18} /> Open PDF Editor
           </button>
-        </div>
+        </motion.div>
       )}
 
-      {/* LIVE PDF PREVIEW MODAL WITH SIDEBAR */}
-      {showPreview && isMounted && parsedData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h2 className="text-xl font-bold text-gray-800">
-                Configure & Preview
-              </h2>
-              <div className="flex items-center gap-4">
-                <PDFDownloadLink
-                  document={
-                    <RedactedResumePDF
-                      data={parsedData}
-                      sections={sections}
-                      showOriginalName={showOriginalName}
-                    />
-                  }
-                  fileName={`${showOriginalName ? parsedData.fullName || "Resume" : "Redacted-Resume"}.pdf`}
-                  className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-green-700"
-                >
-                  {/* @ts-ignore */}
-                  {({ loading }) =>
-                    loading ? "Generating..." : "Download PDF"
-                  }
-                </PDFDownloadLink>
-                <button
-                  onClick={() => setShowPreview(false)}
-                  className="text-gray-500 hover:text-red-600 font-bold text-2xl px-2"
-                >
-                  &times;
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-1 overflow-hidden">
-              <div className="w-64 bg-white border-r p-6 overflow-y-auto">
-                <div className="mb-6 pb-6 border-b border-gray-200">
-                  <label className="flex items-center space-x-3 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={showOriginalName}
-                      onChange={() => setShowOriginalName(!showOriginalName)}
-                      className="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500 cursor-pointer"
-                    />
-                    <span className="text-gray-800 font-bold group-hover:text-green-600 transition-colors">
-                      Reveal Original Name
-                    </span>
-                  </label>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Toggle to show the extracted real name instead of the
-                    Candidate ID.
-                  </p>
+      {/* Editor Modal */}
+      <AnimatePresence>
+        {showPreview && isMounted && parsedData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-900/40 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-white rounded-[2rem] w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-white/20"
+            >
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white/50 backdrop-blur-xl z-10">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-100 p-2 rounded-xl">
+                    <FileText className="text-indigo-600 w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900 leading-tight">
+                      Proxy CV Studio
+                    </h2>
+                    <p className="text-xs text-gray-500 font-medium">
+                      Candidate: {parsedData.candidateId}
+                    </p>
+                  </div>
                 </div>
+                <div className="flex items-center gap-3">
+                  <PDFDownloadLink
+                    document={
+                      <RedactedResumePDF
+                        data={parsedData}
+                        sections={sections}
+                        showOriginalName={showOriginalName}
+                      />
+                    }
+                    fileName={`${showOriginalName ? parsedData.fullName || "Resume" : "Redacted-Resume"}.pdf`}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-indigo-700 hover:shadow-lg transition-all"
+                  >
+                    {/* @ts-ignore */}
+                    {({ loading }) =>
+                      loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" /> Export PDF
+                        </>
+                      )
+                    }
+                  </PDFDownloadLink>
+                  <button
+                    onClick={() => setShowPreview(false)}
+                    className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
 
-                <h3 className="font-bold text-gray-800 mb-4 uppercase text-sm tracking-wide">
-                  Include Sections
-                </h3>
-                <div className="space-y-4">
-                  {Object.keys(sections).map((key) => (
-                    <label
-                      key={key}
-                      className="flex items-center space-x-3 cursor-pointer group"
-                    >
-                      <input
-                        type="checkbox"
+              {/* Layout Editor */}
+              <div className="flex flex-1 overflow-hidden bg-gray-50/50">
+                {/* Left Sidebar */}
+                <div className="w-72 bg-white border-r border-gray-100 p-6 overflow-y-auto hide-scrollbar">
+                  {/* Identity Reveal Panel */}
+                  <div className="mb-8 p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl border border-gray-200/60 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                        {showOriginalName ? (
+                          <Eye size={16} className="text-green-600" />
+                        ) : (
+                          <EyeOff size={16} className="text-gray-400" />
+                        )}
+                        Reveal Identity
+                      </h3>
+                      <div
+                        className={`relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition-colors duration-300 ${showOriginalName ? "bg-green-500" : "bg-gray-300"}`}
+                        onClick={() => setShowOriginalName(!showOriginalName)}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-300 ${showOriginalName ? "translate-x-4" : "translate-x-1"}`}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      Turn off anonymity to display the candidate's real name
+                      instead of their ID.
+                    </p>
+                  </div>
+
+                  <h3 className="font-bold text-gray-900 mb-4 text-sm tracking-wide flex items-center gap-2">
+                    <Settings size={16} className="text-gray-400" /> Document
+                    Sections
+                  </h3>
+
+                  <div className="space-y-1 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                    {Object.keys(sections).map((key) => (
+                      <CustomToggle
+                        key={key}
+                        label={key}
                         checked={sections[key as keyof typeof sections]}
                         onChange={() =>
                           handleToggle(key as keyof typeof sections)
                         }
-                        className="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
                       />
-                      <span className="text-gray-700 font-medium capitalize group-hover:text-indigo-600 transition-colors">
-                        {key === "additional" ? "Other Info" : key}
-                      </span>
-                    </label>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+
+                {/* PDF Viewer Area */}
+                <div className="flex-1 bg-gray-200/50 p-6">
+                  <div className="w-full h-full rounded-2xl overflow-hidden shadow-xl border border-gray-200/60 bg-white">
+                    <PDFViewer
+                      width="100%"
+                      height="100%"
+                      className="border-none bg-white"
+                    >
+                      <RedactedResumePDF
+                        data={parsedData}
+                        sections={sections}
+                        showOriginalName={showOriginalName}
+                      />
+                    </PDFViewer>
+                  </div>
                 </div>
               </div>
-
-              <div className="flex-1 bg-gray-200">
-                <PDFViewer width="100%" height="100%" className="border-none">
-                  <RedactedResumePDF
-                    data={parsedData}
-                    sections={sections}
-                    showOriginalName={showOriginalName}
-                  />
-                </PDFViewer>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
