@@ -23,12 +23,19 @@ import {
   ChevronDown,
   Cpu,
   ExternalLink,
+  Search,
 } from "lucide-react";
 
-// --- FREELY AVAILABLE CLOUD MODELS ---
+// --- FREELY AVAILABLE CLOUD MODELS (As of April 2026) ---
 const CLOUD_MODELS = [
-  { id: "gemini-1.5-flash-8b", name: "Gemini 1.5 Flash-8B (Lightest/Free)" },
-  { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash (Balanced/Free)" },
+  { id: "gemini-3-flash-preview", name: "Gemini 3 Flash (Next-Gen/Free)" },
+  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Fastest/Stable)" },
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Highest Accuracy/Free)" },
+  {
+    id: "gemini-3.1-flash-lite-preview",
+    name: "Gemini 3.1 Flash-Lite (Experimental)",
+  },
+  { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite (Lightweight)" },
 ];
 
 // --- CURATED LOCAL MODELS ---
@@ -344,7 +351,7 @@ export default function Dropzone() {
                 <Info size={14} className="shrink-0 mt-0.5" />
                 <p>
                   Data is sent to Google Gemini servers. Secure and fast. Get
-                  your own FREE key at{" "}
+                  your own key at{" "}
                   <a
                     href="https://aistudio.google.com/api-keys"
                     target="_blank"
@@ -430,6 +437,25 @@ export default function Dropzone() {
                               className="w-full bg-white border border-gray-200 rounded-lg py-2 px-2 text-[11px] focus:ring-1 focus:ring-indigo-500 outline-none"
                             />
                           </div>
+                        </div>
+                        <div className="bg-gray-50/50 border border-gray-100 p-3 rounded-lg text-[10px] text-gray-500 leading-relaxed mt-2 flex items-start gap-2">
+                          <Search
+                            size={14}
+                            className="shrink-0 text-indigo-400 mt-0.5"
+                          />
+                          <p>
+                            Looking for other models? Find all available IDs in
+                            the{" "}
+                            <a
+                              href="https://ai.google.dev/gemini-api/docs/models/gemini"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-indigo-600 hover:underline font-semibold"
+                            >
+                              Google Gemini Models Directory
+                            </a>
+                            .
+                          </p>
                         </div>
                       </div>
                     </motion.div>
@@ -520,6 +546,28 @@ export default function Dropzone() {
                         <div className="bg-white/50 border border-gray-100 p-2 rounded text-[10px] text-gray-500 italic">
                           Model weights are cached locally. Changing models
                           while initialized will trigger a new download cycle.
+                        </div>
+                        <div className="bg-gray-50/50 border border-gray-100 p-3 rounded-lg text-[10px] text-gray-500 leading-relaxed mt-2 flex items-start gap-2">
+                          <Search
+                            size={14}
+                            className="shrink-0 text-green-500 mt-0.5"
+                          />
+                          <p>
+                            Looking for more? Find{" "}
+                            <a
+                              href="https://huggingface.co/models?search=q4f16_1-MLC"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-green-600 hover:underline font-semibold"
+                            >
+                              compatible models on HuggingFace
+                            </a>{" "}
+                            ending in{" "}
+                            <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-700 font-mono">
+                              q4f16_1-MLC
+                            </code>
+                            .
+                          </p>
                         </div>
                       </div>
                     </motion.div>
