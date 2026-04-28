@@ -7,7 +7,6 @@ import { useLocalAI } from "react-brai";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   UploadCloud,
-  FileText,
   Settings,
   ShieldCheck,
   Zap,
@@ -24,6 +23,7 @@ import {
   Cpu,
   ExternalLink,
   Search,
+  Trash2,
 } from "lucide-react";
 
 // --- FREELY AVAILABLE CLOUD MODELS ---
@@ -112,8 +112,7 @@ export default function Dropzone() {
   const { loadModel, chat, isReady, isLoading, response, progress } =
     useLocalAI();
 
-  // --- NEW: LOCAL STORAGE SYNC ---
-  // 1. Load saved settings on mount
+  // --- LOCAL STORAGE SYNC ---
   useEffect(() => {
     setIsMounted(true);
     try {
@@ -131,7 +130,6 @@ export default function Dropzone() {
     }
   }, []);
 
-  // 2. Save settings whenever they change
   useEffect(() => {
     if (isMounted) {
       localStorage.setItem("proxy_cv_cloud_api_key", customApiKey);
@@ -139,7 +137,6 @@ export default function Dropzone() {
       localStorage.setItem("proxy_cv_custom_cloud_model", customCloudModel);
     }
   }, [customApiKey, selectedCloudModel, customCloudModel, isMounted]);
-  // ---------------------------------
 
   const activeCloudModelId = customCloudModel || selectedCloudModel;
   const activeLocalModelId = customLocalModel || selectedLocalModel.id;
@@ -158,6 +155,30 @@ export default function Dropzone() {
 
     if (localConsentGiven) {
       loadModel(selected.id);
+    }
+  };
+
+  // --- CLEAR CACHE LOGIC ---
+  const handleClearCache = async () => {
+    const confirmWipe = window.confirm(
+      "Are you sure you want to delete all downloaded AI models from your browser?\n\nThis will free up several gigabytes of storage, but you will need to re-download the models to use Local AI again.",
+    );
+
+    if (!confirmWipe) return;
+
+    if ("caches" in window) {
+      try {
+        const cacheKeys = await caches.keys();
+        await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+        window.location.reload();
+      } catch (err) {
+        console.error("Failed to clear cache:", err);
+        alert(
+          "Could not automatically clear cache. You may need to clear your browser data manually.",
+        );
+      }
+    } else {
+      alert("Your browser does not support the Cache API.");
     }
   };
 
@@ -588,6 +609,20 @@ export default function Dropzone() {
                             .
                           </p>
                         </div>
+
+                        {/* --- CLEAR CACHE BUTTON --- */}
+                        <div className="mt-2 pt-3 border-t border-gray-200 flex items-center justify-between">
+                          <span className="text-[10px] text-gray-500 italic max-w-[200px]">
+                            Free up disk space by wiping downloaded models.
+                          </span>
+                          <button
+                            onClick={handleClearCache}
+                            disabled={isProcessing}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 rounded-md text-[10px] font-bold transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 size={12} /> Clear Cache
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   )}
@@ -598,7 +633,6 @@ export default function Dropzone() {
         </AnimatePresence>
       </div>
 
-      {/* Dropzone Area */}
       <motion.div
         layout
         className={`relative overflow-hidden rounded-3xl border-2 transition-all duration-300 min-h-[300px] flex flex-col items-center justify-center ${
@@ -747,8 +781,13 @@ export default function Dropzone() {
             >
               <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white/50 backdrop-blur-xl z-10">
                 <div className="flex items-center gap-3">
-                  <div className="bg-indigo-100 p-2 rounded-xl">
-                    <FileText className="text-indigo-600 w-5 h-5" />
+                  {/* --- LOGO INJECTION HERE --- */}
+                  <div className="h-10 w-10 relative flex items-center justify-center bg-gray-50 rounded-xl border border-gray-100 p-1 shrink-0">
+                    <img
+                      src="/logo.png"
+                      alt="Proxy CV Logo"
+                      className="max-h-full max-w-full object-contain"
+                    />
                   </div>
                   <div>
                     <h2 className="text-lg font-bold text-gray-900 leading-tight">
